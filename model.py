@@ -2,6 +2,38 @@ import csv
 import os
 import cv2
 import numpy as np
+import sklearn
+
+def BatchGenerator(image_folder, samples, batch_size):
+    # Create generator to handle the large number of inputs without using too much memory
+    nb_samples = len(samples)
+    while 1:
+        #shuffle(samples)
+        for offset in range(0, nb_samples, batch_size):
+            batch_samples = samples[offset:offset+batch_size]
+
+            images, angles = [], []
+            for batch_sample in batch_samples:
+                name = image_folder + batch_sample[0].split('/')[-1]
+                center_image = cv2.imread(name)
+                center_angle = float(batch_sample[3])
+                images.append(center_image)
+                angles.append(center_angle)
+
+            X_train = np.array(images)
+            y_train = np.array(angles)
+            yield sklearn.utils.shuffle(X_train, y_train)
+
+def ReadCsvLogFile(csv_path):
+    """Read the CSV driving log created from the Udacity Simulator."""
+    samples = []
+    with open(csv_path) as csvfile:
+        reader = csv.reader(csvfile)
+        header = reader
+        for idx, line in enumerate(reader):
+            if idx > 0:
+                samples.append(line)
+    return samples
 
 def GetDataSet(driving_log_csv_path, image_folder):
     """Read the CSV driving log created from the Udacity Simulator.
@@ -25,7 +57,7 @@ def GetDataSet(driving_log_csv_path, image_folder):
     # Read the images
     images = []
     measurements = []
-    for line in lines[1:100]:
+    for line in lines[1:]:
         source_path = line[0]
         image_filename = source_path.split('/')[-1]
         image_path = image_folder + image_filename
@@ -49,7 +81,7 @@ def GetDataSet(driving_log_csv_path, image_folder):
 def BuildModel(image_shape):
     """Builds the Neural Network Model using keras"""
 
-    return BuildInitialTestModel(image_shape)
+    return BuildNvidiaSelfDrivingModel(image_shape)
 
 def BuildInitialTestModel(image_shape):
     """Initial Model used to test the platform"""
@@ -65,42 +97,71 @@ def BuildInitialTestModel(image_shape):
 
 def BuildNvidiaSelfDrivingModel(image_shape):
     """Neural Net Model based on Nvidia's model in https://devblogs.nvidia.com/parallelforall/deep-learning-self-driving-cars/"""
-    # TODO: Implement Model
-    return None
+    from keras.models import Sequential
+    from keras.layers import Flatten, Dense, Activation
+    from keras.layers import Convolution2D
+    from keras.layers.pooling import MaxPooling2D
+    from keras.layers.core import Lambda
 
+    model = Sequential()
+    model.add(Lambda(NormalizeImage, input_shape=img_shape, output_shape=img_shape))
+    model.add(Convolution2D(24, 5, 5))
+    model.add(MaxPooling2D(pool_size=(2,2)))
+    model.add(Activation('relu'))
+    model.add(Convolution2D(36,5,5))
+    model.add(MaxPooling2D(pool_size=(2,2)))
+    model.add(Activation('relu'))
+    model.add(Convolution2D(48,5,5))
+    model.add(MaxPooling2D(pool_size=(2,2)))
+    model.add(Activation('relu'))
+    model.add(Convolution2D(64, 3, 3))
+    model.add(Activation('relu'))
+    model.add(Convolution2D(64,3,3))
+    model.add(Activation('relu'))
+    model.add(Flatten())
+    model.add(Dense(100))
+    model.add(Activation('relu'))
+    model.add(Dense(50))
+    model.add(Activation('relu'))
+    model.add(Dense(1))
 
-def PreProcessData(X, y):
-    """Data preprocessing"""
+    return model
 
-    # Normalize Input Data
-    x_normalized = np.array(X / 255.0 - 0.5)
-
-    return [x_normalized, y]
+def NormalizeImage(image):
+    """Image Normalization"""
+    return image / 255.0 - 0.5
 
 if __name__ == "__main__":
+    from sklearn.model_selection import train_test_split
+
     print("--------------------------------------------")
     print("Project 3 - Behavioral Cloning")
     print("--------------------------------------------")
 
+    csv_path = '../data/driving_log.csv'
+    image_folder = '../data/IMG/'
 
     print("Loading Images from dataset")
-    (X, y) = GetDataSet('../data/driving_log.csv', '../data/IMG/')
-    img_shape = X.shape
-    print("{} Images Loaded".format(len(X)))
-    print("Input Shape: {}".format(img_shape))
+    samples = ReadCsvLogFile(csv_path)
+    train_samples, validation_samples = train_test_split(samples, test_size=0.2)
+    print('Nb training samples: {}'.format(len(train_samples)))
+    print('Nb validation samples: {}'.format(len(validation_samples)))
 
-    # Preprocess Data
-    print("Pre-processing data")
-    X, y = PreProcessData(X, y)
+    img_shape = (160,320,3)
+    print('Image Size: {}'.format(img_shape))
+
+    # Create Generators
+    train_generator = BatchGenerator(image_folder, train_samples, batch_size=32)
+    validation_generator = BatchGenerator(image_folder, validation_samples, batch_size=32)
 
     # Build Model
     print("Building the model")
-    model = BuildModel(img_shape[1:])
+    model = BuildModel(img_shape)
 
     # Train
     print("Starting Training")
     model.compile(loss='mse', optimizer='adam')
-    model.fit(X, y, validation_split=0.2, shuffle=True)
+    model.fit_generator(train_generator, samples_per_epoch=len(train_samples), validation_data=validation_generator, nb_val_samples=len(validation_samples), nb_epoch=3)
 
     # Save 
     print("Saving Model")
