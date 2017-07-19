@@ -99,12 +99,13 @@ def BuildNvidiaSelfDrivingModel(image_shape):
     """Neural Net Model based on Nvidia's model in https://devblogs.nvidia.com/parallelforall/deep-learning-self-driving-cars/"""
     from keras.models import Sequential
     from keras.layers import Flatten, Dense, Activation
-    from keras.layers import Convolution2D
+    from keras.layers import Convolution2D, Cropping2D
     from keras.layers.pooling import MaxPooling2D
     from keras.layers.core import Lambda
 
     model = Sequential()
-    model.add(Lambda(NormalizeImage, input_shape=img_shape, output_shape=img_shape))
+    model.add(Cropping2D(cropping=((50,20), (0,0)), input_shape=image_shape))
+    model.add(Lambda(NormalizeImage))
     model.add(Convolution2D(24, 5, 5))
     model.add(MaxPooling2D(pool_size=(2,2)))
     model.add(Activation('relu'))
