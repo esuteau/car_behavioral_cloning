@@ -3,22 +3,36 @@ import os
 import cv2
 import numpy as np
 import sklearn
+import random
 
 def BatchGenerator(image_folder, samples, batch_size):
     # Create generator to handle the large number of inputs without using too much memory
     nb_samples = len(samples)
     while 1:
-        #shuffle(samples)
+        random.shuffle(samples)
         for offset in range(0, nb_samples, batch_size):
             batch_samples = samples[offset:offset+batch_size]
 
             images, angles = [], []
             for batch_sample in batch_samples:
-                name = image_folder + batch_sample[0].split('/')[-1]
-                center_image = cv2.imread(name)
-                center_angle = float(batch_sample[3])
-                images.append(center_image)
-                angles.append(center_angle)
+                img_center_name = image_folder + batch_sample[0].split('/')[-1]
+                img_left_name = image_folder + batch_sample[1].split('/')[-1]
+                img_right_name = image_folder + batch_sample[2].split('/')[-1]
+
+                # Read all 3 images
+                img_center = cv2.imread(img_center_name)
+                img_left = cv2.imread(img_left_name)
+                img_right = cv2.imread(img_right_name)
+
+                # Get Steering angle for center image and extrapolate angle for left and right images
+                angle_correction = 0.05
+                steering_center = float(batch_sample[3])
+                steering_left = steering_center + angle_correction
+                steering_right = steering_center - angle_correction
+
+                # Sdd images and angles to data set
+                images.extend([img_center, img_left, img_right])
+                angles.extend([steering_center, steering_left, steering_right])
 
             X_train = np.array(images)
             y_train = np.array(angles)
@@ -104,7 +118,7 @@ def BuildNvidiaSelfDrivingModel(image_shape):
     from keras.layers.core import Lambda
 
     model = Sequential()
-    model.add(Cropping2D(cropping=((50,20), (0,0)), input_shape=image_shape))
+    model.add(Cropping2D(cropping=((60,20), (0,0)), input_shape=image_shape))
     model.add(Lambda(NormalizeImage))
     model.add(Convolution2D(24, 5, 5))
     model.add(MaxPooling2D(pool_size=(2,2)))
@@ -124,6 +138,8 @@ def BuildNvidiaSelfDrivingModel(image_shape):
     model.add(Activation('relu'))
     model.add(Dense(50))
     model.add(Activation('relu'))
+    model.add(Dense(10))
+    model.add(Activation('relu'))
     model.add(Dense(1))
 
     return model
@@ -139,8 +155,8 @@ if __name__ == "__main__":
     print("Project 3 - Behavioral Cloning")
     print("--------------------------------------------")
 
-    csv_path = '../data/driving_log.csv'
-    image_folder = '../data/IMG/'
+    csv_path = '../data/0/driving_log.csv'
+    image_folder = '../data/0/IMG/'
 
     print("Loading Images from dataset")
     samples = ReadCsvLogFile(csv_path)
