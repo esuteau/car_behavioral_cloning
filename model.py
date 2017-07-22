@@ -5,38 +5,14 @@ import numpy as np
 import sklearn
 import random
 
-def BatchGenerator(image_folder, samples, batch_size):
-    # Create generator to handle the large number of inputs without using too much memory
-    nb_samples = len(samples)
-    while 1:
-        random.shuffle(samples)
-        for offset in range(0, nb_samples, batch_size):
-            batch_samples = samples[offset:offset+batch_size]
+from keras.models import Sequential
+from keras.layers import Flatten, Dense, Activation
+from keras.layers import Convolution2D, Cropping2D
+from keras.layers.pooling import MaxPooling2D
+from keras.layers.core import Lambda
+from keras.preprocessing.image import img_to_array, load_img
 
-            images, angles = [], []
-            for batch_sample in batch_samples:
-                img_center_name = image_folder + batch_sample[0].split('/')[-1]
-                img_left_name = image_folder + batch_sample[1].split('/')[-1]
-                img_right_name = image_folder + batch_sample[2].split('/')[-1]
-
-                # Read all 3 images
-                img_center = cv2.imread(img_center_name)
-                img_left = cv2.imread(img_left_name)
-                img_right = cv2.imread(img_right_name)
-
-                # Get Steering angle for center image and extrapolate angle for left and right images
-                angle_correction = 0.05
-                steering_center = float(batch_sample[3])
-                steering_left = steering_center + angle_correction
-                steering_right = steering_center - angle_correction
-
-                # Sdd images and angles to data set
-                images.extend([img_center, img_left, img_right])
-                angles.extend([steering_center, steering_left, steering_right])
-
-            X_train = np.array(images)
-            y_train = np.array(angles)
-            yield sklearn.utils.shuffle(X_train, y_train)
+import matplotlib.pyplot as plt
 
 def ReadCsvLogFile(csv_path):
     """Read the CSV driving log created from the Udacity Simulator."""
@@ -49,48 +25,91 @@ def ReadCsvLogFile(csv_path):
                 samples.append(line)
     return samples
 
-def GetDataSet(driving_log_csv_path, image_folder):
-    """Read the CSV driving log created from the Udacity Simulator.
-    You can define a specific folder indicating where the images are located.
-    Returns a tuple (images, measurements)"""
+def GetImageShape():
+    return (105, 320, 3)
 
-    # TODO: Make it a generator, so that we don't load all the data at once.
-    if not os.path.exists(driving_log_csv_path):
-        raise Exception("Could not find the CSV log file.")
+def GetDataFromGenerator(image_folder, samples, batch_size=36):
+    """Returns batches of center, left and right camera images using a generator.
+        Randomly flips the images horizontally to remove steering bias and generalize the data."""
+       
+    nb_samples = len(samples)
+    col_names = ['center', 'left', 'right']
+    angle_correction = 0.25
+    camera_correction = {'center': 0, 'left': angle_correction, 'right': -angle_correction}
+    batch_size_triplet = batch_size // 3
 
-    if not os.path.exists(image_folder):
-        raise Exception("Could not find the image data folder")
+    while 1:
+        random.shuffle(samples)
+        for offset in range(0, nb_samples, batch_size_triplet):
+            batch_samples = samples[offset:offset+batch_size_triplet]
 
-    # Read the CSV summary
-    lines = []
-    with open(driving_log_csv_path) as f:
-        reader = csv.reader(f)
-        for line in reader:
-            lines.append(line)
+            images, angles = [], []
+            for batch_sample in batch_samples:
 
-    # Read the images
-    images = []
-    measurements = []
-    for line in lines[1:]:
-        source_path = line[0]
-        image_filename = source_path.split('/')[-1]
-        image_path = image_folder + image_filename
-        image = cv2.imread(image_path)
-        images.append(image)
+                for col, camera in enumerate(col_names):
 
-        measurement = {}
-        measurement["steering"] = float(line[3])
-        measurement["throttle"] = float(line[4])
-        measurement["brake"] = float(line[5])
-        measurement["speed"] = float(line[6])
-        measurements.append(measurement)
+                    # Parse Windows/Linux Filenames
+                    split_char = '/'
+                    if '\\' in batch_sample[col]:
+                        split_char = '\\'
+                    img_name =  batch_sample[col].split(split_char)[-1]
 
-    # Return Dataset
-    X = np.array(images)
-    y = np.array([meas["steering"] for meas in measurements])
+                    # Load Image
+                    image = load_img(image_folder + img_name)
+                    image = img_to_array(image)
 
-    return [X, y]
+                    # Apply Steering Correction
+                    steering_center = float(batch_sample[3])
+                    steering = steering_center + camera_correction[camera]
 
+                    # Apply Horizontal Flip Randomly on the data.
+                    # Reverse the steering angle in this case
+                    if random.random() > 0.5:
+                        steering = -1*steering
+                        image = cv2.flip(image, 1)
+
+                    # Data Preprocessing: Normalization, Cropping,...
+                    image = PreProcessData(image)
+
+                    # Add image and angle to dataset
+                    images.append(image)
+                    angles.append(steering)
+
+            X_train = np.array(images)
+            y_train = np.array(angles)
+            yield sklearn.utils.shuffle(X_train, y_train)
+
+
+def PreProcessData(image, normalize=True, crop=True):
+    """Pre-Process the data by Cropping and Normalizing. Expecting 160x320x3 images"""
+    plot_img = True
+    if plot_img:
+        plt.imshow(image)
+
+    if crop:
+        image = CropImage(image, 55, 25, 0, 0)
+
+    if plot_img:
+        plt.imshow(image)
+
+    if normalize:
+        image = NormalizeImage(image)
+
+    if plot_img:
+        plt.imshow(image)
+
+    return image
+
+def CropImage(image, crop_top_px, crop_bottom_px, crop_left_px, crop_right_px):
+    """Crop an image. Expecting a 3 dimensional numpy array."""
+    height = image.shape[0]
+    width = image.shape[1]
+    image = image[crop_top_px:width-crop_bottom_px, crop_left_px:width-crop_right_px, :]
+    return image
+
+def NormalizeImage(image):
+    """Image Normalization"""
+    return image / 255.0 - 0.5
 
 def BuildModel(image_shape):
     """Builds the Neural Network Model using keras"""
@@ -99,9 +118,6 @@ def BuildModel(image_shape):
 
 def BuildInitialTestModel(image_shape):
     """Initial Model used to test the platform"""
-    from keras.models import Sequential
-    from keras.layers import Flatten, Dense
-    from keras.layers import Convolution2D
     model = Sequential()
     model.add(Flatten(input_shape=image_shape))
     model.add(Dense(1))
@@ -111,42 +127,19 @@ def BuildInitialTestModel(image_shape):
 
 def BuildNvidiaSelfDrivingModel(image_shape):
     """Neural Net Model based on Nvidia's model in https://devblogs.nvidia.com/parallelforall/deep-learning-self-driving-cars/"""
-    from keras.models import Sequential
-    from keras.layers import Flatten, Dense, Activation
-    from keras.layers import Convolution2D, Cropping2D
-    from keras.layers.pooling import MaxPooling2D
-    from keras.layers.core import Lambda
-
     model = Sequential()
-    model.add(Cropping2D(cropping=((60,20), (0,0)), input_shape=image_shape))
-    model.add(Lambda(NormalizeImage))
-    model.add(Convolution2D(24, 5, 5))
-    model.add(MaxPooling2D(pool_size=(2,2)))
-    model.add(Activation('relu'))
-    model.add(Convolution2D(36,5,5))
-    model.add(MaxPooling2D(pool_size=(2,2)))
-    model.add(Activation('relu'))
-    model.add(Convolution2D(48,5,5))
-    model.add(MaxPooling2D(pool_size=(2,2)))
-    model.add(Activation('relu'))
-    model.add(Convolution2D(64, 3, 3))
-    model.add(Activation('relu'))
-    model.add(Convolution2D(64,3,3))
-    model.add(Activation('relu'))
+    model.add(Convolution2D(24,5,5,subsample=(2,2),activation="relu", input_shape=image_shape))
+    model.add(Convolution2D(36,5,5,subsample=(2,2),activation="relu"))
+    model.add(Convolution2D(48,5,5,subsample=(2,2),activation="relu"))
+    model.add(Convolution2D(64,3,3,activation="relu"))
+    model.add(Convolution2D(64,3,3,activation="relu"))
     model.add(Flatten())
     model.add(Dense(100))
-    model.add(Activation('relu'))
     model.add(Dense(50))
-    model.add(Activation('relu'))
     model.add(Dense(10))
-    model.add(Activation('relu'))
     model.add(Dense(1))
-
     return model
 
-def NormalizeImage(image):
-    """Image Normalization"""
-    return image / 255.0 - 0.5
 
 if __name__ == "__main__":
     from sklearn.model_selection import train_test_split
@@ -155,21 +148,23 @@ if __name__ == "__main__":
     print("Project 3 - Behavioral Cloning")
     print("--------------------------------------------")
 
-    csv_path = '../data/0/driving_log.csv'
-    image_folder = '../data/0/IMG/'
+    csv_path = '../data/1/driving_log.csv'
+    image_folder = '../data/1/IMG/'
 
     print("Loading Images from dataset")
     samples = ReadCsvLogFile(csv_path)
     train_samples, validation_samples = train_test_split(samples, test_size=0.2)
+    img_shape = GetImageShape()
     print('Nb training samples: {}'.format(len(train_samples)))
     print('Nb validation samples: {}'.format(len(validation_samples)))
-
-    img_shape = (160,320,3)
     print('Image Size: {}'.format(img_shape))
 
+    # Hyper Parameters:
+    batch_size = 36
+
     # Create Generators
-    train_generator = BatchGenerator(image_folder, train_samples, batch_size=32)
-    validation_generator = BatchGenerator(image_folder, validation_samples, batch_size=32)
+    train_generator = GetDataFromGenerator(image_folder, train_samples, batch_size=batch_size)
+    validation_generator = GetDataFromGenerator(image_folder, validation_samples, batch_size=batch_size)
 
     # Build Model
     print("Building the model")
@@ -178,7 +173,8 @@ if __name__ == "__main__":
     # Train
     print("Starting Training")
     model.compile(loss='mse', optimizer='adam')
-    model.fit_generator(train_generator, samples_per_epoch=len(train_samples), validation_data=validation_generator, nb_val_samples=len(validation_samples), nb_epoch=3)
+    model.fit_generator(train_generator, samples_per_epoch=len(train_samples),
+     validation_data=validation_generator, nb_val_samples=len(validation_samples), nb_epoch=3)
 
     # Save 
     print("Saving Model")
