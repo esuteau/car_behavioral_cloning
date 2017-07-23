@@ -17,7 +17,7 @@ The goals / steps of this project are the following:
 [//]: # (Image References)
 
 [image1]: ./CNN_Model_Architecture.png "Model Visualization"
-[image2]: ./orignal_images.png "From Left to Right: Center, Left and Right Camera images"
+[image2]: ./original_images.png "From Left to Right: Center, Left and Right Camera images"
 [image3]: ./flipped_images.png "Images after random mirroring"
 [image4]: ./cropped_images.png "Images after cropping"
 
