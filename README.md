@@ -17,6 +17,9 @@ The goals / steps of this project are the following:
 [//]: # (Image References)
 
 [image1]: ./CNN_Model_Architecture.png "Model Visualization"
+[image2]: ./orignal_images.png "From Left to Right: Center, Left and Right Camera images"
+[image3]: ./flipped_images.png "Images after random mirroring"
+[image4]: ./cropped_images.png "Images after cropping"
 
 ---
 ###Files Submitted & Code Quality
@@ -55,6 +58,7 @@ The NVIDIA model consists of 5 Convolutionnal feature maps and then 3 Fully conn
 Since we want to predict the steering angle, I added another fully-connected layer of size 1.
 
 Here is a description of my final architecture architecture:
+
 ![alt text][image1]
 
 
@@ -106,6 +110,22 @@ As explained above, my process for the creation of the dataset was the following
 2. Use Left-Center-Right cameras with correction steering factors to help the car get back to the center of the road.
 3. Flip the images randomly to help the model generalize.
 4. Shuffle the images and split the dataset: 80% training, 20% validation
-5. Normalize the images and crop the top 55 pixels and bottom 25 pixels to remove the sky and the hood of the car.
+5. Normalize the images and crop the top 65 pixels and bottom 25 pixels to remove the sky and the hood of the car.
 
-Batches of 36 images, 3 epochs and an Adam optimizer worked well for training
+My complete dataset contains close to 54,000 images (combining left, right, center), with 80% going to training and 20% to validation.
+I processed the data set in batches of 36 images.
+A total of 3 epochs and an Adam optimizer worked well for training.
+
+This below is an example of the 2 sets of center-left-right camera images, before and after processing.
+
+Original Images (From left to right: Center, Left and Right Cameras)
+
+![alt text][image2]
+
+Images After Random Mirroring (Top-Left and Top-Right are mirrored)
+
+![alt text][image3]
+
+Images After Cropping
+
+![alt text][image4]
