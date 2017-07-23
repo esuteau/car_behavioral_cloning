@@ -6,7 +6,7 @@ import sklearn
 import random
 
 from keras.models import Sequential
-from keras.layers import Flatten, Dense, Activation
+from keras.layers import Flatten, Dense, Activation, Dropout
 from keras.layers import Convolution2D, Cropping2D
 from keras.layers.pooling import MaxPooling2D
 from keras.layers.core import Lambda
@@ -26,7 +26,7 @@ def ReadCsvLogFile(csv_path):
     return samples
 
 def GetImageShape():
-    return (105, 320, 3)
+    return (160, 320, 3)
 
 def GetDataFromGenerator(image_folder, samples, batch_size=36):
     """Returns batches of center, left and right camera images using a generator.
@@ -34,7 +34,7 @@ def GetDataFromGenerator(image_folder, samples, batch_size=36):
        
     nb_samples = len(samples)
     col_names = ['center', 'left', 'right']
-    angle_correction = 0.25
+    angle_correction = 0.15
     camera_correction = {'center': 0, 'left': angle_correction, 'right': -angle_correction}
     batch_size_triplet = batch_size // 3
 
@@ -68,9 +68,6 @@ def GetDataFromGenerator(image_folder, samples, batch_size=36):
                         steering = -1*steering
                         image = cv2.flip(image, 1)
 
-                    # Data Preprocessing: Normalization, Cropping,...
-                    image = PreProcessData(image)
-
                     # Add image and angle to dataset
                     images.append(image)
                     angles.append(steering)
@@ -82,21 +79,24 @@ def GetDataFromGenerator(image_folder, samples, batch_size=36):
 
 def PreProcessData(image, normalize=True, crop=True):
     """Pre-Process the data by Cropping and Normalizing. Expecting 160x320x3 images"""
-    plot_img = True
+    plot_img = False
     if plot_img:
         plt.imshow(image)
+        plt.show()
 
     if crop:
         image = CropImage(image, 55, 25, 0, 0)
 
     if plot_img:
         plt.imshow(image)
+        plt.show()
 
     if normalize:
         image = NormalizeImage(image)
 
     if plot_img:
         plt.imshow(image)
+        plt.show()
 
     return image
 
@@ -128,6 +128,8 @@ def BuildInitialTestModel(image_shape):
 def BuildNvidiaSelfDrivingModel(image_shape):
     """Neural Net Model based on Nvidia's model in https://devblogs.nvidia.com/parallelforall/deep-learning-self-driving-cars/"""
     model = Sequential()
+    model.add(Lambda(NormalizeImage, input_shape=image_shape))
+    model.add(Cropping2D(cropping=((55,25), (0,0))))
     model.add(Convolution2D(24,5,5,subsample=(2,2),activation="relu", input_shape=image_shape))
     model.add(Convolution2D(36,5,5,subsample=(2,2),activation="relu"))
     model.add(Convolution2D(48,5,5,subsample=(2,2),activation="relu"))
@@ -140,6 +142,27 @@ def BuildNvidiaSelfDrivingModel(image_shape):
     model.add(Dense(1))
     return model
 
+def BuildFinalModel(image_shape):
+    """Neural Net Model based on Nvidia's model in https://devblogs.nvidia.com/parallelforall/deep-learning-self-driving-cars/"""
+    model = Sequential()
+    model.add(Lambda(NormalizeImage, input_shape=image_shape))
+    model.add(Cropping2D(cropping=((55,25), (0,0))))
+    model.add(Convolution2D(24,5,5,subsample=(2,2),activation="relu", input_shape=image_shape))
+    model.add(Dropout(0.5))
+    model.add(Convolution2D(36,5,5,subsample=(2,2),activation="relu"))
+    model.add(Dropout(0.5))
+    model.add(Convolution2D(48,5,5,subsample=(2,2),activation="relu"))
+    model.add(Dropout(0.5))
+    model.add(Convolution2D(64,3,3,activation="relu"))
+    model.add(Dropout(0.5))
+    model.add(Convolution2D(64,3,3,activation="relu"))
+    model.add(Flatten())
+    model.add(Dense(256))
+    model.add(Dense(128))
+    model.add(Dense(64))
+    model.add(Dense(1))
+    return model
+
 
 if __name__ == "__main__":
     from sklearn.model_selection import train_test_split
@@ -148,8 +171,8 @@ if __name__ == "__main__":
     print("Project 3 - Behavioral Cloning")
     print("--------------------------------------------")
 
-    csv_path = '../data/1/driving_log.csv'
-    image_folder = '../data/1/IMG/'
+    csv_path = '../data/driving_log.csv'
+    image_folder = '../data/IMG/'
 
     print("Loading Images from dataset")
     samples = ReadCsvLogFile(csv_path)
