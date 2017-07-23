@@ -147,7 +147,7 @@ def BuildFinalModel(image_shape):
     model = Sequential()
     model.add(Lambda(NormalizeImage, input_shape=image_shape))
     model.add(Cropping2D(cropping=((55,25), (0,0))))
-    model.add(Convolution2D(24,5,5,subsample=(2,2),activation="relu", input_shape=image_shape))
+    model.add(Convolution2D(24,5,5,subsample=(2,2),activation="relu"))
     model.add(Dropout(0.5))
     model.add(Convolution2D(36,5,5,subsample=(2,2),activation="relu"))
     model.add(Dropout(0.5))
