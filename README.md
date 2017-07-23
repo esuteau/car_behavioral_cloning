@@ -16,7 +16,7 @@ The goals / steps of this project are the following:
 
 [//]: # (Image References)
 
-[image1]: ./CNN Model Architecture.png "Model Visualization"
+[image1]: ./CNN_Model_Architecture.png "Model Visualization"
 
 ---
 ###Files Submitted & Code Quality
